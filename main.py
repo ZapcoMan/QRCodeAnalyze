@@ -1,4 +1,4 @@
-import pyzxing
+import pyzbar.pyzbar as pyzbar
 from PIL import Image
 import sys
 import logging
@@ -40,29 +40,30 @@ def decode_qrcode(image_path):
         logging.error(f"无法打开文件: {image_path}")
         return
 
-    # 初始化二维码读取器
+    # 使用pyzbar解码图像中的二维码
     try:
-        reader = pyzxing.BarCodeReader()
-    except Exception as e:
-        logging.error(f"初始化二维码读取器失败: {e}")
-        return
+        decoded_objects = pyzbar.decode(img)
+        logging.info(f"解码结果数量: {len(decoded_objects)}")
 
-    # 尝试解码图像中的二维码
-    result = reader.decode(image_path)
-    if result and result[0].get('parsed'):
-        raw_data = result[0]['raw']  # 获取原始数据
-        # 尝试将原始数据解码为UTF-8字符串
-        decoded_data = decode_data(raw_data, ['gbk', 'utf-8', 'gb2312'])
-        if decoded_data:
-            logging.info(f"二维码内容: {decoded_data}")
+        if decoded_objects:
+            # 获取第一个解码对象的数据
+            raw_data = decoded_objects[0].data
+            # 尝试将原始数据解码为UTF-8字符串
+            decoded_data = decode_data(raw_data, ['utf-8', 'gbk', 'gb2312'])
+            if decoded_data:
+                logging.info(f"二维码内容: {decoded_data}")
+            else:
+                logging.error("无法解码二维码数据")
         else:
-            logging.error("无法解码二维码数据")
-    else:
-        logging.error("未能解码二维码")
+            logging.error("未能解码二维码")
+    except Exception as e:
+        logging.error(f"解码过程中发生错误: {e}")
+        return
 
 if __name__ == "__main__":
     try:
         image_path = input("请输入二维码图片的路径: ")
+        # image_path = input("请输入二维码图片的路径: ")
         decode_qrcode(image_path)
     except KeyboardInterrupt:
         logging.error("程序被中断")
