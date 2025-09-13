@@ -1,7 +1,8 @@
 import pyzbar.pyzbar as pyzbar
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageFilter
 import sys
 import logging
+import numpy as np
 try:
     import colorlog
     COLOR_LOGGING_AVAILABLE = True
@@ -85,6 +86,24 @@ def preprocess_image(img):
     for threshold in [64, 192]:
         binary_img = contrast_img.point(lambda x: 0 if x < threshold else 255, '1')
         images.append((f"二值化图像(阈值{threshold})", binary_img))
+
+    # 额外的预处理方法，专门针对Telegram二维码
+    # 1. 高斯模糊去噪后再二值化
+    blurred = gray_img.filter(ImageFilter.GaussianBlur(radius=1))
+    blurred_binary = blurred.point(lambda x: 0 if x < 128 else 255, '1')
+    images.append(("高斯模糊+二值化", blurred_binary))
+
+    # 2. 锐化处理
+    sharpened = img.filter(ImageFilter.SHARPEN)
+    images.append(("锐化图像", sharpened))
+
+    # 3. 颜色反转处理（针对反色二维码）
+    inverted = Image.eval(gray_img, lambda x: 255 - x)
+    images.append(("颜色反转图像", inverted))
+
+    # 4. 尺寸放大（小尺寸二维码处理）
+    large_img = img.resize((img.width * 2, img.height * 2), Image.LANCZOS)
+    images.append(("放大图像", large_img))
 
     return images
 
@@ -182,7 +201,47 @@ def decode_qrcode(image_path):
                 logging.info(f"解码为文本失败，原始数据(HEX): {hex_data}")
                 logging.error("无法解码二维码数据为文本格式")
         else:
-            logging.error("未能解码二维码")
+            logging.warning("标准方法未能解码二维码，尝试额外的处理方法")
+
+            # 针对Telegram二维码的特殊处理
+            logging.info("尝试针对Telegram二维码的特殊处理")
+
+            # 1. 尝试更激进的图像处理
+            # 转换为RGBA模式再处理
+            if img.mode != 'RGBA':
+                rgba_img = img.convert('RGBA')
+                decoded_objects = pyzbar.decode(rgba_img)
+                if decoded_objects:
+                    logging.info(f"RGBA转换后解码得到 {len(decoded_objects)} 个结果")
+
+            # 2. 如果还是无法解码，输出一些诊断信息
+            if not decoded_objects:
+                logging.info(f"图像尺寸: {img.size}")
+                logging.info(f"图像模式: {img.mode}")
+                logging.info(f"图像格式: {img.format}")
+
+                # 检查是否包含多个二维码
+                # 尝试裁剪图像的四个角分别解码
+                width, height = img.size
+                crops = [
+                    ("左上角", (0, 0, width//2, height//2)),
+                    ("右上角", (width//2, 0, width, height//2)),
+                    ("左下角", (0, height//2, width//2, height)),
+                    ("右下角", (width//2, height//2, width, height))
+                ]
+
+                for name, box in crops:
+                    cropped_img = img.crop(box)
+                    temp_objects = pyzbar.decode(cropped_img)
+                    logging.info(f"裁剪区域 {name} 解码得到 {len(temp_objects)} 个结果")
+                    if temp_objects:
+                        decoded_objects = temp_objects
+                        logging.info(f"在裁剪区域 {name} 中成功解码")
+                        break
+
+            if not decoded_objects:
+                logging.error("经过所有尝试后仍然无法解码二维码，可能是特殊格式或加密二维码")
+                logging.info("建议：1. 确保二维码清晰完整 2. 尝试使用Telegram应用直接扫描 3. 检查是否为加密二维码")
     except Exception as e:
         logging.error(f"解码过程中发生错误: {e}")
         return
