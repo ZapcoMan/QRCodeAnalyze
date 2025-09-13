@@ -3,6 +3,8 @@ from PIL import Image, ImageEnhance, ImageFilter
 import sys
 import logging
 import numpy as np
+import colorlog
+
 try:
     import colorlog
     COLOR_LOGGING_AVAILABLE = True
@@ -17,7 +19,7 @@ if COLOR_LOGGING_AVAILABLE:
         datefmt="%Y-%m-%d %H:%M:%S",
         log_colors={
             'DEBUG':    'cyan',
-            'INFO':     'green',
+            'INFO':     'blue',
             'WARNING':  'yellow',
             'ERROR':    'red',
             'CRITICAL': 'red,bg_white',
