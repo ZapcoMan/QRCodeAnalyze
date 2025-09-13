@@ -1,9 +1,96 @@
-#  二维码识别工具
+# 二维码识别工具
 
-# 下载和使用 
+一个功能强大的二维码识别工具，能够处理各种复杂情况下的二维码识别任务，包括模糊、小尺寸、反色等特殊情况。
+
+## 功能特点
+
+- 支持多种图像格式（JPEG, PNG, BMP等）
+- 自动图像预处理以提高识别率
+- 支持多种编码格式解码（UTF-8, GBK, GB2312）
+- 特殊优化处理Telegram等应用的二维码
+- 彩色日志输出，便于查看识别过程和结果
+
+## 安装方式
+
+### 方法一：使用 git 克隆项目（推荐）
+
+~~~bash 
+git clone https://github.com/codervibe/QRCodeAnalyze.git 
+cd QRCodeAnalyze 
+pip install -r requirements.txt 
+python main.py
 ~~~
-git clone https://github.com/codervibe/QRCodeAnalyze.git
-cd QRCodeAnalyze
+### 方法二：直接下载源码
+
+1. 下载项目压缩包并解压
+2. 进入项目目录
+3. 安装依赖：
+
+~~~bash
 pip install -r requirements.txt
-python3 main.py
 ~~~
+
+4. 运行程序：
+
+~~~bash
+python main.py
+~~~
+## 依赖库
+
+项目依赖以下Python库：
+- pyzbar==7.4.2 (二维码解码)
+- pillow==11.3.0 (图像处理)
+- numpy==2.3.3 (数值计算)
+- colorlog==6.9.0 (彩色日志输出)
+- colorama==0.4.6 (跨平台彩色终端)
+- pyzxing==1.1.1 (二维码处理)
+- pyzbar==0.1.9 (二维码扫描)
+
+## 使用方法
+
+1. 运行程序：
+~~~bash
+python main.py
+~~~
+2. 根据提示输入二维码图片的完整路径，例如：
+~~~
+请输入二维码图片的路径: C:\Users\Example\Pictures\qrcode.png
+~~~
+   
+3. 程序会自动尝试多种预处理方法来识别二维码，并在控制台输出结果。
+
+## 技术特性
+
+程序采用多种图像预处理技术提高识别率：
+
+1. 灰度化处理
+2. 对比度增强
+3. 多种阈值的二值化处理
+4. 高斯模糊去噪
+5. 图像锐化
+6. 颜色反转处理（针对反色二维码）
+7. 图像放大（针对小尺寸二维码）
+8. 区域裁剪识别（针对图像边缘的二维码）
+
+## 支持的二维码类型
+
+- 标准QR码
+- 各种条形码格式（EAN13, EAN8, CODE128, CODE39, UPCA, UPCE）
+- 反色二维码
+- 模糊或低清晰度二维码
+- 小尺寸二维码
+
+## 故障排除
+
+如果遇到无法识别的二维码，请尝试以下方法：
+
+1. 确保二维码图像清晰完整
+2. 尝试裁剪图像，只保留二维码部分
+3. 调整图像亮度和对比度
+4. 使用专业图像处理软件进行预处理
+
+## 许可证
+
+本项目采用 MIT 许可证，详情请参见 LICENSE 文件。
+
+   
