@@ -3,8 +3,6 @@ from PIL import Image, ImageEnhance, ImageFilter
 import sys
 import logging
 import numpy as np
-import colorlog
-
 try:
     import colorlog
     COLOR_LOGGING_AVAILABLE = True
@@ -52,10 +50,9 @@ def decode_data(raw_data, encoding_list):
     """
     for encoding in encoding_list:
         try:
-            logging.info(f"正在尝试编码格式: {encoding}")
             return raw_data.decode(encoding)
         except UnicodeDecodeError:
-            logging.warning(f"当前 {encoding} 编码格式 解码失败，即将尝试下一个编码格式")
+            continue
     return None
 
 def preprocess_image(img):
@@ -134,10 +131,7 @@ def decode_qrcode(image_path):
         decoded_objects = []
 
         for name, processed_img in processed_images:
-            logging.info(f"尝试使用 {name} 解码")
             temp_objects = pyzbar.decode(processed_img)
-            logging.info(f"使用 {name} 解码得到 {len(temp_objects)} 个结果")
-
             if temp_objects:
                 decoded_objects = temp_objects
                 logging.info(f"使用 {name} 成功解码")
@@ -145,12 +139,9 @@ def decode_qrcode(image_path):
 
         # 如果所有预处理方式都失败，尝试使用不同配置
         if not decoded_objects:
-            logging.info("尝试使用不同配置解码")
-            # 尝试添加一些解码选项
             try:
                 decoded_objects = pyzbar.decode(img, symbols=[pyzbar.ZBarSymbol.QRCODE])
             except AttributeError:
-                logging.warning("ZBarSymbol.QRCODE 不可用，使用默认解码")
                 decoded_objects = pyzbar.decode(img)
 
             if not decoded_objects:
@@ -170,28 +161,17 @@ def decode_qrcode(image_path):
                         symbol = getattr(pyzbar.ZBarSymbol, symbol_name)
                         try:
                             temp_objects = pyzbar.decode(img, symbols=[symbol])
-                            logging.info(f"尝试解码 {symbol_name} 格式，得到 {len(temp_objects)} 个结果")
                             if temp_objects:
                                 decoded_objects = temp_objects
+                                logging.info(f"使用 {symbol_name} 格式成功解码")
                                 break
-                        except Exception as e:
-                            logging.warning(f"解码 {symbol_name} 格式时出错: {e}")
+                        except Exception:
                             continue
-                    else:
-                        logging.warning(f"ZBarSymbol 不支持 {symbol_name} 格式")
-
-        logging.info(f"最终解码结果数量: {len(decoded_objects)}")
 
         if decoded_objects:
-            # 显示所有解码结果
-            for i, obj in enumerate(decoded_objects):
-                logging.info(f"解码对象 {i+1}: 类型={obj.type}, 数据长度={len(obj.data)}")
-
             # 获取第一个解码对象的数据
             raw_data = decoded_objects[0].data
             barcode_type = decoded_objects[0].type
-
-            logging.info(f"条码类型: {barcode_type}")
 
             # 尝试将原始数据解码为UTF-8字符串
             decoded_data = decode_data(raw_data, ['utf-8', 'gbk', 'gb2312'])
@@ -200,28 +180,22 @@ def decode_qrcode(image_path):
             else:
                 # 如果文本解码失败，至少显示原始字节数据的十六进制表示
                 hex_data = raw_data.hex()
-                logging.info(f"解码为文本失败，原始数据(HEX): {hex_data}")
-                logging.error("无法解码二维码数据为文本格式")
+                logging.info(f"二维码数据(HEX): {hex_data}")
+                logging.warning("无法将二维码数据解码为文本格式")
         else:
             logging.warning("标准方法未能解码二维码，尝试额外的处理方法")
 
             # 针对Telegram二维码的特殊处理
-            logging.info("尝试针对Telegram二维码的特殊处理")
-
             # 1. 尝试更激进的图像处理
             # 转换为RGBA模式再处理
             if img.mode != 'RGBA':
                 rgba_img = img.convert('RGBA')
                 decoded_objects = pyzbar.decode(rgba_img)
                 if decoded_objects:
-                    logging.info(f"RGBA转换后解码得到 {len(decoded_objects)} 个结果")
+                    logging.info("RGBA转换后解码成功")
 
             # 2. 如果还是无法解码，输出一些诊断信息
             if not decoded_objects:
-                logging.info(f"图像尺寸: {img.size}")
-                logging.info(f"图像模式: {img.mode}")
-                logging.info(f"图像格式: {img.format}")
-
                 # 检查是否包含多个二维码
                 # 尝试裁剪图像的四个角分别解码
                 width, height = img.size
@@ -235,15 +209,24 @@ def decode_qrcode(image_path):
                 for name, box in crops:
                     cropped_img = img.crop(box)
                     temp_objects = pyzbar.decode(cropped_img)
-                    logging.info(f"裁剪区域 {name} 解码得到 {len(temp_objects)} 个结果")
                     if temp_objects:
                         decoded_objects = temp_objects
                         logging.info(f"在裁剪区域 {name} 中成功解码")
                         break
 
-            if not decoded_objects:
-                logging.error("经过所有尝试后仍然无法解码二维码，可能是特殊格式或加密二维码")
-                logging.info("建议：1. 确保二维码清晰完整 2. 尝试使用Telegram应用直接扫描 3. 检查是否为加密二维码")
+            if decoded_objects:
+                # 获取解码结果
+                raw_data = decoded_objects[0].data
+                decoded_data = decode_data(raw_data, ['utf-8', 'gbk', 'gb2312'])
+                if decoded_data:
+                    logging.info(f"二维码内容: {decoded_data}")
+                else:
+                    hex_data = raw_data.hex()
+                    logging.info(f"二维码数据(HEX): {hex_data}")
+                    logging.warning("无法将二维码数据解码为文本格式")
+            else:
+                logging.error("经过所有尝试后仍然无法解码二维码")
+                logging.info("建议：确保二维码清晰完整，或尝试使用专门的二维码应用扫描")
     except Exception as e:
         logging.error(f"解码过程中发生错误: {e}")
         return
@@ -251,7 +234,6 @@ def decode_qrcode(image_path):
 if __name__ == "__main__":
     try:
         image_path = input("请输入二维码图片的路径: ")
-        # image_path = input("请输入二维码图片的路径: ")
         decode_qrcode(image_path)
     except KeyboardInterrupt:
         logging.error("程序被中断")
