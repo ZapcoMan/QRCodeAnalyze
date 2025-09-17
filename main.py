@@ -233,8 +233,19 @@ def decode_qrcode(image_path):
 
 if __name__ == "__main__":
     try:
-        image_path = input("请输入二维码图片的路径: ")
-        decode_qrcode(image_path)
+        image_paths_input = input("请输入二维码图片的路径(多个路径用逗号分隔): ")
+        image_paths = [path.strip() for path in image_paths_input.split(',') if path.strip()]
+
+        if not image_paths:
+            logging.error("未提供有效的图片路径")
+            sys.exit(1)
+
+        for i, image_path in enumerate(image_paths):
+            if len(image_paths) > 1:
+                logging.info(f"正在处理第 {i+1} 个二维码图片: {image_path}")
+            decode_qrcode(image_path)
+
     except KeyboardInterrupt:
         logging.error("程序被中断")
         sys.exit(1)
+
