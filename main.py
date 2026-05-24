@@ -1,4 +1,3 @@
-import pyzbar.pyzbar as pyzbar
 from PIL import Image, ImageEnhance, ImageFilter
 import sys
 import logging
@@ -40,6 +39,16 @@ else:
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
 
+# 初始化 pyzxing 解码器
+try:
+    from pyzxing import BarCodeReader
+    reader = BarCodeReader()
+    # logging.info("成功加载 pyzxing 解码器")
+except Exception as e:
+    logging.error(f"pyzxing 加载失败: {e}")
+    logging.error("请安装 pyzxing: pip install pyzxing")
+    reader = None
+
 def decode_data(raw_data, encoding_list):
     """
     尝试按照给定的编码格式列表解码数据。
@@ -54,6 +63,39 @@ def decode_data(raw_data, encoding_list):
         except UnicodeDecodeError:
             continue
     return None
+
+def decode_with_pyzxing(image_path):
+    """
+    使用 pyzxing 解码二维码
+    
+    :param image_path: 二维码图像文件的路径（字符串）
+    :return: 解码结果列表，格式与 pyzbar.decode 兼容
+    """
+    if reader is None:
+        logging.error("pyzxing 解码器未初始化")
+        return []
+    
+    try:
+        # pyzxing 只接受字符串路径，不支持列表
+        results = reader.decode(image_path)
+        
+        if results and len(results) > 0:
+            result = results[0]
+            # 构造与 pyzbar 兼容的结果对象
+            class DecodedObject:
+                def __init__(self, data, barcode_type):
+                    self.data = data.encode('utf-8') if isinstance(data, str) else data
+                    self.type = barcode_type
+            
+            raw_data = result.get('raw', '')
+            barcode_type = result.get('format', 'QRCODE')
+            
+            if raw_data:
+                return [DecodedObject(raw_data, barcode_type)]
+    except Exception as e:
+        logging.debug(f"pyzxing 解码失败: {e}")
+    
+    return []
 
 def preprocess_image(img):
     """
@@ -124,49 +166,41 @@ def decode_qrcode(image_path):
         logging.error(f"无法打开文件: {image_path}")
         return
 
-    # 使用pyzbar解码图像中的二维码
+    # 使用 pyzxing 解码图像中的二维码
     try:
-        # 尝试多种预处理方式
+        # 尝试多种预处理方式（保存为临时文件）
         processed_images = preprocess_image(img)
         decoded_objects = []
 
         for name, processed_img in processed_images:
-            temp_objects = pyzbar.decode(processed_img)
-            if temp_objects:
-                decoded_objects = temp_objects
-                logging.info(f"使用 {name} 成功解码")
-                break
-
-        # 如果所有预处理方式都失败，尝试使用不同配置
-        if not decoded_objects:
+            # 保存预处理后的图像为临时文件
+            temp_path = f"temp_{name.replace('(', '').replace(')', '').replace(' ', '_').replace(',', '')}.png"
             try:
-                decoded_objects = pyzbar.decode(img, symbols=[pyzbar.ZBarSymbol.QRCODE])
-            except AttributeError:
-                decoded_objects = pyzbar.decode(img)
+                processed_img.save(temp_path)
+                temp_objects = decode_with_pyzxing(temp_path)
+                if temp_objects:
+                    decoded_objects = temp_objects
+                    logging.info(f"使用 {name} 成功解码")
+                    # 删除临时文件
+                    import os
+                    os.remove(temp_path)
+                    break
+                else:
+                    # 删除临时文件
+                    import os
+                    os.remove(temp_path)
+            except Exception as e:
+                logging.debug(f"处理 {name} 时出错: {e}")
+                # 清理临时文件
+                try:
+                    import os
+                    os.remove(temp_path)
+                except:
+                    pass
 
-            if not decoded_objects:
-                # 尝试所有支持的符号类型（使用异常处理确保兼容性）
-                symbol_types = [
-                    'QRCODE',
-                    'EAN13',
-                    'EAN8',
-                    'CODE128',
-                    'CODE39',
-                    'UPCA',
-                    'UPCE'
-                ]
-
-                for symbol_name in symbol_types:
-                    if hasattr(pyzbar.ZBarSymbol, symbol_name):
-                        symbol = getattr(pyzbar.ZBarSymbol, symbol_name)
-                        try:
-                            temp_objects = pyzbar.decode(img, symbols=[symbol])
-                            if temp_objects:
-                                decoded_objects = temp_objects
-                                logging.info(f"使用 {symbol_name} 格式成功解码")
-                                break
-                        except Exception:
-                            continue
+        # 如果所有预处理方式都失败，尝试直接解码原始图像
+        if not decoded_objects:
+            decoded_objects = decode_with_pyzxing(image_path)
 
         if decoded_objects:
             # 获取第一个解码对象的数据
@@ -179,7 +213,7 @@ def decode_qrcode(image_path):
                 logging.info(f"二维码内容: {decoded_data}")
             else:
                 # 如果文本解码失败，至少显示原始字节数据的十六进制表示
-                hex_data = raw_data.hex()
+                hex_data = raw_data.hex() if isinstance(raw_data, bytes) else raw_data.encode('utf-8').hex()
                 logging.info(f"二维码数据(HEX): {hex_data}")
                 logging.warning("无法将二维码数据解码为文本格式")
         else:
@@ -190,9 +224,21 @@ def decode_qrcode(image_path):
             # 转换为RGBA模式再处理
             if img.mode != 'RGBA':
                 rgba_img = img.convert('RGBA')
-                decoded_objects = pyzbar.decode(rgba_img)
-                if decoded_objects:
-                    logging.info("RGBA转换后解码成功")
+                rgba_temp = "temp_rgba.png"
+                try:
+                    rgba_img.save(rgba_temp)
+                    decoded_objects = decode_with_pyzxing(rgba_temp)
+                    if decoded_objects:
+                        logging.info("RGBA转换后解码成功")
+                    import os
+                    os.remove(rgba_temp)
+                except Exception as e:
+                    logging.debug(f"RGBA转换处理失败: {e}")
+                    try:
+                        import os
+                        os.remove(rgba_temp)
+                    except:
+                        pass
 
             # 2. 如果还是无法解码，输出一些诊断信息
             if not decoded_objects:
@@ -208,11 +254,26 @@ def decode_qrcode(image_path):
 
                 for name, box in crops:
                     cropped_img = img.crop(box)
-                    temp_objects = pyzbar.decode(cropped_img)
-                    if temp_objects:
-                        decoded_objects = temp_objects
-                        logging.info(f"在裁剪区域 {name} 中成功解码")
-                        break
+                    crop_temp = f"temp_crop_{name}.png"
+                    try:
+                        cropped_img.save(crop_temp)
+                        temp_objects = decode_with_pyzxing(crop_temp)
+                        if temp_objects:
+                            decoded_objects = temp_objects
+                            logging.info(f"在裁剪区域 {name} 中成功解码")
+                            import os
+                            os.remove(crop_temp)
+                            break
+                        else:
+                            import os
+                            os.remove(crop_temp)
+                    except Exception as e:
+                        logging.debug(f"裁剪区域 {name} 处理失败: {e}")
+                        try:
+                            import os
+                            os.remove(crop_temp)
+                        except:
+                            pass
 
             if decoded_objects:
                 # 获取解码结果
